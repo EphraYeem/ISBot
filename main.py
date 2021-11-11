@@ -37,10 +37,20 @@ async def add_institution(ctx, name, emoji, deparment_list=None):
     if deparment_list:
         for dep in deparment_list.split(','):
             if get(ctx.guild.roles, name=dep):
-                curr_dep_role = await ctx.guild.create_role(name=name + "-" + dep)
-                dbcon.execute(f"INSERT INTO departments_in_institutions (id, name, matching_emoji) VALUES ({institution_role.id}, '{institution_role.name}', '{emoji}')")
-
+                curr_inst_dep_role = await ctx.guild.create_role(name=name + "-" + dep)
+                curr_dep_role = get(ctx.guild.roles, name=dep)
+                dbcon.execute(f"INSERT INTO departments_in_institutions (id, name, institution_id, department_id) VALUES ({curr_inst_dep_role.id}, '{curr_inst_dep_role.name}', {institution_role.id}, {curr_dep_role.id})")
+                dbcon.commit()
+    
     dbcon.close()
     await ctx.send('yee and yeeer <:yee:366667220312522763>')
+
+@bot.command(aliases=['gim'], help='generates and sends the message with the institutions buttons roles')
+@commands.has_role('GOD')
+async def generate_institution_message(ctx):
+    dbcon = sqlite3.connect('IS.db')
+    
+    await ctx.send('yee')
+
 
 bot.run('sike')
