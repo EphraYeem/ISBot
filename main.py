@@ -15,8 +15,11 @@ async def on_ready():
     await bot.get_channel(376343682728853506).send("bot is online")
     await bot.get_channel(376343682728853506).send("Buttons!", components=[ActionRow(Button(label="The Button", custom_id="button1"))])
 
+    # noam try to delete channels
+    #await delete_text_channel(TextChannel.physics)
 
-@bot.command(help='gets an institution name, emoji that represents it and department_list of the existing departments from the department table (separeted with a comma)')
+
+@bot.command(aliases=['adi'],help='gets an institution name, emoji that represents it and department_list of the existing departments from the department table (separeted with a comma)')
 @commands.has_role('GOD')
 async def add_institution(ctx, name, emoji, deparment_list=None):
     # Validates all departments
@@ -31,13 +34,44 @@ async def add_institution(ctx, name, emoji, deparment_list=None):
     dbcon.commit()
     if deparment_list:
         for dep in deparment_list.split(','):
-            if get(ctx.guild.roles, name=dep):
-                curr_inst_dep_role = await ctx.guild.create_role(name=name + "-" + dep)
-                curr_dep_role = get(ctx.guild.roles, name=dep)
-                dbcon.execute(f"INSERT INTO departments_in_institutions (id, name, institution_id, department_id) VALUES ({curr_inst_dep_role.id}, '{curr_inst_dep_role.name}', {institution_role.id}, {curr_dep_role.id})")
-                dbcon.commit()
-    
-    dbcon.close()
+            curr_inst_dep_role = await ctx.guild.create_role(name=name + "-" + dep)
+            curr_dep_role = get(ctx.guild.roles, name=dep)
+            dbcon.execute(f"INSERT INTO departments_in_institutions (id, name, institution_id, department_id) VALUES ({curr_inst_dep_role.id}, '{curr_inst_dep_role.name}', {institution_role.id}, {curr_dep_role.id})")
+            dbcon.commit()
+
+    dbcon.close() # db connection to close is important
+
+    # create category for institution - noam will try!
+    # google and another google
+    # there is no need to create new function
+    category = await ctx.guild.create_category(name)
+    #only institution can see their category
+    await category.set_permissions(ctx.guild.default_role, view_channel=False)
+    await category.set_permissions(institution_role, view_channel=True)
+
+    # create general text channel and general voice channel
+    text_general=await ctx.guild.create_text_channel('general text',category=category)
+    voice_general=await ctx.guild.create_voice_channel('general talk', category=category)
+    # only institution can see their general *text chat* and voice
+    await text_general.set_permissions(ctx.guild.default_role, view_channel=False)
+    await text_general.set_permissions(institution_role, view_channel=True)
+    # only institution can see their general text chat and *voice*
+    await voice_general.set_permissions(ctx.guild.default_role, view_channel=False)
+    await voice_general.set_permissions(institution_role, view_channel=True)
+
+    # what role u have then open specific channel for them
+    for dip in deparment_list.split(','):
+        text_channel = await ctx.guild.create_text_channel(dip, category=category)
+        voice_channel = await ctx.guild.create_voice_channel(dip, category=category)
+
+        role_name= name + "-" + dip
+        curr_dep_role = get(ctx.guild.roles, name=role_name)
+        await text_channel.set_permissions(ctx.guild.default_role,view_channel=False)
+        await voice_channel.set_permissions(ctx.guild.default_role, view_channel=False)
+        await text_channel.set_permissions(curr_dep_role,view_channel=True)
+        await voice_channel.set_permissions(curr_dep_role,view_channel=True)
+
+    # print at the end of function
     await ctx.send('yee and yeeer <:yee:366667220312522763>')
 
 @bot.command(aliases=['gim'], help='generates and sends the message with the institutions buttons roles')
@@ -82,7 +116,6 @@ async def generate_dip_message(ctx, institution):
     await ctx.send('Please select your department from the buttons below:', components = msg_components)
 
 
-
 @bot.event
 async def on_button_click(interaction):
     role = get(interaction.guild.roles, id = int(interaction.custom_id))
@@ -103,4 +136,4 @@ async def emoj(ctx, emoj):
     print(emoj)
     await ctx.send(emoj)
 
-bot.run('sike')
+bot.run('ODkyMDgyNjAyMDY2OTgwOTY0.YVHuqg.FQl1Lq0kVN1cHRnDQ7K7cRt_mKo')
