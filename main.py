@@ -7,6 +7,7 @@
 import re
 import sqlite3
 
+from discord import PermissionOverwrite
 from discord_components import ComponentsBot, Button, ActionRow
 from discord.utils import get
 from discord.ext import commands
@@ -25,7 +26,7 @@ async def on_ready():
 
 @bot.command(aliases=['addi'], help='gets an institution name, emoji that represents it and department_list of the existing departments from the department table (separeted with a comma)')
 @commands.has_role('GOD')
-async def add_institution(ctx, name, emoji, deparment_list=None):
+async def add_institution(ctx, institution_name, emoji, deparment_list):
     # Validates all departments
     for dep in deparment_list.split(','):  # Put the validation in it's own function, maybe in a utils module? ehm ehm
         if not get(ctx.guild.roles, name=dep):
@@ -33,26 +34,26 @@ async def add_institution(ctx, name, emoji, deparment_list=None):
             return
     # Creates the roles and inserts the info about them to the DB
     dbcon = sqlite3.connect('IS.db')
-    institution_role = await ctx.guild.create_role(name=name)
+    institution_role = await ctx.guild.create_role(name=institution_name)
     dbcon.execute(f"INSERT INTO institutions (id, name, matching_emoji) VALUES ({institution_role.id}, '{institution_role.name}', '{emoji}')")
     dbcon.commit()
     for dep in deparment_list.split(','):
         if get(ctx.guild.roles, name=dep):
-            curr_inst_dep_role = await ctx.guild.create_role(name=name + "-" + dep)
+            curr_inst_dep_role = await ctx.guild.create_role(name=institution_name + "-" + dep)
             curr_dep_role = get(ctx.guild.roles, name=dep)
             dbcon.execute(f"INSERT INTO departments_in_institutions (id, name, institution_id, department_id) VALUES ({curr_inst_dep_role.id}, '{curr_inst_dep_role.name}', {institution_role.id}, {curr_dep_role.id})")
             dbcon.commit()
 
     dbcon.close()
 
-    category = await ctx.guild.create_category(name)
+    category = await ctx.guild.create_category(institution_name)
     # only institution can see their category
     await category.set_permissions(ctx.guild.default_role, view_channel=False)
     await category.set_permissions(institution_role, view_channel=True)
 
     # add channel for choose department
     choose_department_channel = await ctx.guild.create_text_channel('choose-department', category=category)
-    await choose_department_channel.send('Please choose your department', components=generate_components(name))
+    await choose_department_channel.send('Please choose your department', components=generate_components(institution_name))
 
     # create general text channel and general voice channel
     text_general = await ctx.guild.create_text_channel('general-text', category=category)
@@ -65,59 +66,80 @@ async def add_institution(ctx, name, emoji, deparment_list=None):
     await voice_general.set_permissions(institution_role, view_channel=True)
 
     # text and voice channels for every department in the institution
-    for dip in deparment_list.split(','):
-        text_channel = await ctx.guild.create_text_channel(dip, category=category)
-        voice_channel = await ctx.guild.create_voice_channel(dip, category=category)
-
-        role_name = name + "-" + dip
+    for dep in deparment_list.split(','):
+        role_name = institution_name + "-" + dep
         curr_dep_role = get(ctx.guild.roles, name=role_name)
-        await text_channel.set_permissions(ctx.guild.default_role, view_channel=False)
-        await voice_channel.set_permissions(ctx.guild.default_role, view_channel=False)
-        await text_channel.set_permissions(curr_dep_role, view_channel=True)
-        await voice_channel.set_permissions(curr_dep_role, view_channel=True)
+        overwrites = {
+            ctx.guild.default_role: PermissionOverwrite(view_channel=False),
+            curr_dep_role: PermissionOverwrite(view_channel=True)
+        }
+        await ctx.guild.create_text_channel(dep, category=category,overwrites=overwrites)
+        await ctx.guild.create_voice_channel(dep, category=category,overwrites=overwrites)
 
-    # FOR NOAM: update the choose institution message
-    #               -how? get the channel named "choose-institution" in the institution category, delete the old messaage and send the new one
+    # Updates the old choose-institution message - it finds the channel, deletes the old one, and generates a new one
+    choose_institution_channel = get(ctx.guild.channels, name='choose-institution')
+    await choose_institution_channel.purge()
+    await choose_institution_channel.send('ברוכים הבאים לשרת! בחרו את מוסד הלימודים שלכם', components=generate_components())
 
     await ctx.send('yee and yeeer <:yee:366667220312522763>')
 
 
 @bot.command(aliases=['addd'], help='gets a department name, emoji that represents it and institution_list of the existing institutions from the institution table (separeted with a comma)')
 @commands.has_role('GOD')
-async def add_department(ctx, department_name, emoji, institution_list):
+async def add_department(ctx, department_name, emoji, institution_list=None):
     """"generate new department for existing institution
     the function get department_name,emoji,list_of_(existing)_institutions_that_has_this_department """
     # Validates all institution
-    for inst in institution_list.split(','):
-        if not get(ctx.guild.roles, name=inst):
-            await ctx.send(f'Could not found a role with the name {inst}')
-            return
-
-    # create a role for department
-    dep_role = await ctx.guild.create_role(name=department_name)
+    if institution_list:
+        for inst in institution_list.split(','):
+            if not get(ctx.guild.roles, name=inst):
+                await ctx.send(f'Could not found a role with the name {inst}')
+                return
 
     dbcon = sqlite3.connect('IS.db')
-    dbcon.execute(f"INSERT INTO departments (id, name, matching_emoji) VALUES ({dep_role.id}, '{dep_role.name}', '{emoji}')")
-    for inst in institution_list.split(','):
-        # new dep role for every inst in the list
-        curr_inst_dep_role = await ctx.guild.create_role(name=inst + "-" + department_name)
-        curr_inst_role = get(ctx.guild.roles, name=inst)
+    
+    # Checks if the department exists and Creates a role for department if not
+    if not (dep_role := get(ctx.guild.roles, name=department_name)):
+        dep_role = await ctx.guild.create_role(name=department_name)
+        dbcon.execute(f"INSERT INTO departments (id, name, matching_emoji) VALUES ({dep_role.id}, '{dep_role.name}', '{emoji}')")
+    
+    # Creates institutions-specific channels and everything related if an institution list was given
+    if institution_list:
+        for inst in institution_list.split(','):
+            # new dep role for every inst in the list
+            curr_inst_dep_role = await ctx.guild.create_role(name=inst + "-" + department_name)
+            curr_inst_role = get(ctx.guild.roles, name=inst)
 
-        # insert to dii table with specific inst
-        dbcon.execute(f"INSERT INTO departments_in_institutions (id, name, institution_id, department_id) VALUES ({curr_inst_dep_role.id}, '{curr_inst_dep_role.name}', {curr_inst_role.id}, {dep_role.id})")
+            # Inserts to dii table with specific inst
+            dbcon.execute(f"INSERT INTO departments_in_institutions (id, name, institution_id, department_id) VALUES ({curr_inst_dep_role.id}, '{curr_inst_dep_role.name}', {curr_inst_role.id}, {dep_role.id})")
+            dbcon.commit()
 
-        # NOAM: create text channels and voice channels for departments in the appropriate institutions categories
-        #       and update the departments messages (with the button)
-        #           -how? get the channel named "choose-department" in the institution category, delete the old messaage and send the new one
+            # Creates text channels and voice channels for departments in the appropriate institutions categories
+            # and update (deletes and sends a new one) the departments messages (with the button)
+            institution_category = get(ctx.guild.categories, name=inst)
+            role_name = inst + "-" + department_name
+            curr_dep_role = get(ctx.guild.roles, name=role_name)
+            overwrites = {
+                ctx.guild.default_role: PermissionOverwrite(view_channel=False),
+                curr_dep_role: PermissionOverwrite(view_channel=True)
+            }
+            await ctx.guild.create_text_channel(department_name, category=institution_category,overwrites=overwrites)
+            await ctx.guild.create_voice_channel(department_name, category=institution_category,overwrites=overwrites)
+            
+            # Updates the old choose-institution message - it finds the channel, deletes the old one, and generates a new one
+            choose_department_channel = get(institution_category.channels, name='choose-department')
+            await choose_department_channel.purge()
+            await choose_department_channel.send('Please select your department from the buttons below:', components=generate_components(inst))
 
     dbcon.commit()
     dbcon.close()
+    await ctx.send('yee and yeeer <:yee:366667220312522763>')
 
 
 @bot.command(aliases=['gim'], help='generates and sends the message with the institutions buttons roles')
 @commands.has_role('GOD')
 async def generate_institution_message(ctx):
-    await ctx.send('Please select your institution from the buttons below:', components=generate_components())
+    await ctx.send('ברוכים הבאים לשרת! בחרו את מוסד הלימודים שלכם', components=generate_components())
 
 
 @bot.command(aliases=['gdm'], help='generates and sends the message with the departments (of given institution) buttons roles')
@@ -143,7 +165,6 @@ async def on_button_click(interaction):
     dbcon = sqlite3.connect('IS.db')
     dbcon.row_factory = sqlite3.Row  # So we can select the results like a dict
     if query_results := dbcon.execute(f"select department_id from departments_in_institutions where id = {interaction.custom_id}").fetchone():
-        print(interaction.user.roles)
         department_role_id = query_results['department_id']
         department_role = get(interaction.guild.roles, id=int(department_role_id))
         if added_flag:
@@ -175,10 +196,17 @@ async def emoj(ctx, emoji):
     await ctx.send(emoji)
 
 
-@bot.command(help='deletes all the data from all the tables in the DB')
+@bot.command(help='deletes all the data from all the tables in the DB and deletes the roles that exists there')
 @commands.has_role('GOD')
 async def clean_db(ctx):
+    role_id_list = []
     dbcon = sqlite3.connect('IS.db')
+    dbcon.row_factory = sqlite3.Row  # So we can select the results like a dict
+    role_id_list.extend(dbcon.execute("SELECT id FROM institutions").fetchall())
+    role_id_list.extend(dbcon.execute("SELECT id FROM departments").fetchall())
+    role_id_list.extend(dbcon.execute("SELECT id FROM departments_in_institutions").fetchall())
+    for r in role_id_list:
+        await get(ctx.guild.roles, id=r['id']).delete()
     dbcon.execute('delete from institutions')
     dbcon.execute('delete from departments')
     dbcon.execute('delete from departments_in_institutions')
@@ -195,14 +223,14 @@ def generate_components(institution_name=None):
     dbcon = sqlite3.connect('IS.db')
     dbcon.row_factory = sqlite3.Row  # So we can select the results like a dict
     if institution_name:
-        roles_query = "SELECT dip.id, d.name, d.matching_emoji FROM departments_in_institutions AS dip JOIN departments AS d on dip.department_id = d.id join institutions AS i on dip.institution_id = i.id WHERE i.name = '{}'".format(institution_name)
+        roles_query = "SELECT dii.id, d.name, d.matching_emoji FROM departments_in_institutions AS dii JOIN departments AS d on dii.department_id = d.id join institutions AS i on dii.institution_id = i.id WHERE i.name = '{}'".format(institution_name)
     else:
         roles_query = "SELECT id, name, matching_emoji FROM institutions"
     comp_list = dbcon.execute(roles_query).fetchall()
     components = []
     curr_action_row = ActionRow()
     for i, comp in enumerate(comp_list):
-        if i == MAX_COMPONENTS:
+        if i and (i + 1) % MAX_COMPONENTS == 0:
             components.append(curr_action_row)
             curr_action_row = ActionRow()
         curr_action_row.append(Button(label=comp['name'], custom_id=comp['id'], emoji=get_actual_emoji(comp['matching_emoji'])))
@@ -219,12 +247,6 @@ def get_actual_emoji(emoji):
         return bot.get_emoji(int(custom.group()))
     else:
         return emoji
-
-
-@bot.command()
-@commands.has_role('GOD')
-async def pos(ctx):
-    await ctx.send(ctx.channel.position)
 
 
 bot.run('sike')
