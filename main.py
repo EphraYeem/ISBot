@@ -4,6 +4,11 @@
 ##### Docstrings?
 ##### class SQLmanager.
 
+
+################ discord-components==2.1.1
+################ discord-py-interactions==4.0.2
+################ discord.py==2.0.1
+
 import re
 import sqlite3
 
@@ -21,7 +26,7 @@ bot = ComponentsBot("$")
 async def on_ready():
     print(f"Logged in as {bot.user}!")  # This is a bad habit. use .format instead.
     await bot.get_channel(376343682728853506).send("bot is online")  # Magic
-    await bot.get_channel(376343682728853506).send("Buttons!", components=[ActionRow(Button(label="The Button", custom_id="button1"))])  # Magic, Also maybe split the line into several lines? it's a bit long.
+    # await bot.get_channel(376343682728853506).send("Buttons!", components=[ActionRow(Button(label="The Button", custom_id="button1"))])  # Magic, Also maybe split the line into several lines? it's a bit long.
 
 
 @bot.command(aliases=['addi'], help='gets an institution name, emoji that represents it and department_list of the existing departments from the department table (separeted with a comma)')
@@ -249,4 +254,14 @@ def get_actual_emoji(emoji):
         return emoji
 
 
-bot.run('sike')
+@bot.command()
+@commands.has_role('GOD')
+async def yee(ctx):
+    i = 1
+    while channel := get(ctx.guild.channels, name=str(i)):
+        await channel.delete()
+        i += 1
+
+
+
+bot.run('ODkyMDgyNjAyMDY2OTgwOTY0.YVHuqg.tQgbfMKeFFYE2Y3KnRdl1rwKS50')
