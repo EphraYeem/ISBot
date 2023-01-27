@@ -4,8 +4,9 @@ from sqlalchemy.ext.declarative import declarative_base
 
 
 engine = sa.create_engine('sqlite:///IS.db')
-Session = sessionmaker(engine)
+Session = sessionmaker(engine, expire_on_commit=False)
 Base = declarative_base()
+
 
 class Institution(Base):
     __tablename__ = 'institutions'
@@ -37,10 +38,40 @@ def get_institutions():
 
 def get_departments(institution: str):
     with Session.begin() as session:
-        return session.query(DepartmentsInInstitution).join(Institution).join(Department).filter(Institution.name==institution).first().department.name
+        return session.query(DepartmentsInInstitution.id.label('id'), 
+                             Department.name.label('name'), 
+                             Department.matching_emoji.label('matching_emoji')).\
+                       select_from(DepartmentsInInstitution).\
+                       join(Institution).\
+                       join(Department).\
+                       filter(Institution.name==institution).all()
 
-print(get_departments('a'))
+
+def get_department_from_dii(department_in_institution_id: id):
+    with Session.begin() as session:
+        return session.query(DepartmentsInInstitution).\
+                filter(DepartmentsInInstitution.id==department_in_institution_id).\
+                one_or_none()
+    # dbcon.execute(f"select department_id from departments_in_institutions where id = {interaction.custom_id}").fetchone()
+
+
+#TODO: chnage to just insert the role itself and an emoji?
+def insert_institution(id: int, name: str, matching_emoji: str):
+    with Session.begin() as session:
+        session.add(Institution(id=id, name=name, matching_emoji=matching_emoji))
+
+
+def insert_department(id: int, name: str, matching_emoji: str):
+    with Session.begin() as session:
+        session.add(Department(id=id, name=name, matching_emoji=matching_emoji))
+
+
+def insert_department_in_institution(id: int, name: str, institution_id: int, department_id: int):
+    with Session.begin() as session:
+        session.add(DepartmentsInInstitution(id=id, name=name, institution_id=institution_id, department_id=department_id))
+
+
 # with Session.begin() as session:
-#     session.add(Institution(id=1, name='a', matching_emoji='yee'))
-#     session.add(Department(id=2, name='b', matching_emoji='yoo'))
+#     session.add(Institution(id=1, name='a', matching_emoji=':yee:366667220312522763'))
+#     session.add(Department(id=2, name='b', matching_emoji='😂'))
 #     session.add(DepartmentsInInstitution(id=3, name='yoya', institution_id=1, department_id=2))
