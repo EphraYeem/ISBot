@@ -14,13 +14,11 @@ class Institution(Base):
     name = sa.Column(sa.String)
     matching_emoji = sa.Column(sa.String)
 
-
 class Department(Base):
     __tablename__ = 'departments'
     id = sa.Column(sa.Integer, primary_key=True)
     name = sa.Column(sa.String)
     matching_emoji = sa.Column(sa.String)
-
 
 class DepartmentsInInstitution(Base):
     __tablename__ = 'departments_in_institutions'
@@ -31,9 +29,7 @@ class DepartmentsInInstitution(Base):
     institution = relationship('Institution')
     department = relationship('Department')
 
-
 Base.metadata.create_all(engine)
-
 
 def get_institutions():
     with Session.begin() as session:
